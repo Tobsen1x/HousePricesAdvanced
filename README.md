@@ -1,2 +1,2 @@
-# House_Prices_Advanced
+# HousePricesAdvanced
 Kaggle Competition
