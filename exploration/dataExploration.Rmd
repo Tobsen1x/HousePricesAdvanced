@@ -1,0 +1,44 @@
+---
+title: "Data Exploration"
+author: "Tobias Diederich"
+date: "18 September 2016"
+output: html_document
+---
+
+```{r setup, echo = FALSE, eval=TRUE}
+source(file = 'C:/RStudioWorkspace/HousePricesAdvanced/scripts/initScripting.R', echo = FALSE, encoding = 'UTF-8')
+```
+
+
+```{r dataPrep, echo = TRUE, eval = TRUE}
+train.raw <- read.csv('C:/RStudioWorkspace/HousePricesAdvanced/data/train.csv',stringsAsFactors=FALSE)
+test.raw <- read.csv('C:/RStudioWorkspace/HousePricesAdvanced/data/test.csv',stringsAsFactors=FALSE)
+
+##### Data Preprocessing #####
+allL0 <- preprocL0(train.raw, test.raw)
+l0Data <- extractL0Data(allL0, train.raw$SalePrice)
+
+variables <- colnames(l0Data$train$predictors)
+for(variable in variables)
+{
+    print(paste("===",variable,"==="))
+    print(describe(train.raw[,variable]))
+
+    if(is.factor(allL0[,variable]))
+    {
+        boxplot(split(exp(l0Data$train$y),l0Data$train$predictors[,variable]),main=variable)
+    }
+    else
+    {
+        correlation <- cor(l0Data$train$predictors[,variable],exp(l0Data$train$y),use="na.or.complete")
+        plot_title <- paste0(variable,"\nCorrelation = ",correlation)
+        plot(x = l0Data$train$predictors[,variable],
+             y=exp(l0Data$train$y),
+             xlab=variable,
+             ylab="SalePrice",
+             main=plot_title)
+        abline(coef=lm(y~x,data=data.frame(x=l0Data$train$predictors[,variable],y=exp(l0Data$train$y)))$coef)
+    }
+}
+```
+
