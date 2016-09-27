@@ -3,7 +3,7 @@ library(glmnet)
 library(Metrics)
 library(outliers)
 library(randomForest)
-library(car)
+#library(car)
 
 library(caret)
 library(ggplot2)

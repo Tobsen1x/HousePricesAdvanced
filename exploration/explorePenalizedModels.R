@@ -90,8 +90,8 @@ foldCount <- 10
 seed <- 16450
 modelList <- list(
     'lasso' = list('family' = 'gaussian', 'alpha' = 1, 'lambda' = cvLassoFit$lambda.min),
-    'rf' = list('mtry' = 80, 'ntree' = 500)
-    #'ridge' = list('family' = 'gaussian', 'alpha' = 0, 'lambda' = cvRidgeFit$lambda.min)
+    'rf' = list('mtry' = 80, 'ntree' = 500),
+    'ridge' = list('family' = 'gaussian', 'alpha' = 0, 'lambda' = cvRidgeFit$lambda.min)
     )
 
 set.seed(seed)
@@ -124,7 +124,6 @@ resultList <- append(resultList, list('cvPredictions' = allPreds))
 
 lassoMetrics <- filter(allMetrics, model == 'lasso')
 lassoMetrics
-
 
 metrics <- evaluatePrediction(resultList$cvPredictions)
 metrics

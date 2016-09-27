@@ -18,18 +18,18 @@ test.raw <- read.csv('C:/RStudioWorkspace/HousePricesAdvanced/data/test.csv',str
 allL0 <- preprocL0(train.raw, test.raw)
 l0Data <- extractL0Data(allL0, train.raw$SalePrice)
 
+allRaw <- select(train.raw, -c(Id, SalePrice))
+allRaw <- rbind(allRaw, select(test.raw, -c(Id)))
+
 variables <- colnames(l0Data$train$predictors)
 for(variable in variables)
 {
     print(paste("===",variable,"==="))
-    print(describe(train.raw[,variable]))
+    print(describe(allRaw[,variable]))
 
-    if(is.factor(allL0[,variable]))
-    {
+    if(is.factor(allL0[,variable])) {
         boxplot(split(exp(l0Data$train$y),l0Data$train$predictors[,variable]),main=variable)
-    }
-    else
-    {
+    } else {
         correlation <- cor(l0Data$train$predictors[,variable],exp(l0Data$train$y),use="na.or.complete")
         plot_title <- paste0(variable,"\nCorrelation = ",correlation)
         plot(x = l0Data$train$predictors[,variable],
@@ -37,7 +37,8 @@ for(variable in variables)
              xlab=variable,
              ylab="SalePrice",
              main=plot_title)
-        abline(coef=lm(y~x,data=data.frame(x=l0Data$train$predictors[,variable],y=exp(l0Data$train$y)))$coef)
+        abline(coef=lm(y~x,data=data.frame(x=l0Data$train$predictors[,variable],
+                                           y=exp(l0Data$train$y)))$coef)
     }
 }
 ```
