@@ -4,6 +4,7 @@ library(Metrics)
 library(outliers)
 library(randomForest)
 library(car)
+library(e1071)
 
 library(caret)
 library(ggplot2)

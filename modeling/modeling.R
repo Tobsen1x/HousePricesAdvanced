@@ -1,5 +1,53 @@
+tuneItMan <- function(train, modelStr, tuningGrid, foldCount = 10, seed = 16450) {
+    allMetrics <- data.frame()
+    for(gridIndex in 1:nrow(tuningGrid)) {
+        actGrid <- tuningGrid[gridIndex,]
+        aktModelList <- list(actGrid)
+        names(aktModelList) <- modelStr
+        aktPred <- predictL0(train, modelList = aktModelList, foldCount = foldCount)
+        aktMetrics <- evaluatePrediction(aktPred)
+        aktMetrics <- cbind(aktMetrics, actGrid)
+        if(nrow(allMetrics) == 0) {
+            allMetrics <- aktMetrics
+        } else {
+            allMetrics <- rbind(allMetrics, aktMetrics)
+        }
+    }
+    return(allMetrics)
+}
+
+predictL0 <- function(train, modelList, foldCount, seed = 16450) {
+    set.seed(seed)
+    foldArray <- createFolds(train$y, k = foldCount, list = FALSE)
+    resultList <- list()
+    
+    # CV Predict Trainset
+    allPreds <- data.frame()
+    allMetrics <- data.frame()
+    for(i in unique(foldArray)) {
+        trainFold <- foldData(train, foldArray, i)
+        
+        foldModels <- trainLevelModels(modelList = modelList, trainData = trainFold$train, seed = seed)
+        foldPreds <- predictLevel(models = foldModels, testData = trainFold$test)
+        
+        #actMetrics <- evaluatePrediction(foldPreds)
+        #actMetrics <- cbind('fold' = i, actMetrics)
+        
+        if(nrow(allPreds) == 0) {
+            allPreds <- foldPreds
+            #allMetrics <- actMetrics
+        } else {
+            allPreds <- rbind(allPreds, foldPreds)
+            #allMetrics <- rbind(allMetrics, actMetrics)
+        }
+    }
+    allPreds <- arrange(allPreds, id)
+    result <- list('id' = allPreds$id, 'y' = allPreds$y, 'predictors' = select(allPreds, -c(id, y)))
+    return(result)
+}
+
 evaluatePrediction <- function(predictions) {
-    modelPreds <- select(predictions, -c(id, y))
+    modelPreds <- predictions$predictors
     allMetrics <- data.frame()
     for(actModelStr in colnames(modelPreds)) {
         actPreds <- modelPreds[,actModelStr]
@@ -28,14 +76,14 @@ trainLevelModels <- function(modelList, trainData, seed) {
            grepl('^elasticnet', actModelStr)) {
             set.seed(seed)
             actFit <- glmnet(x = trainData$predictors, y = trainData$y,
-                             family = actTrainParas$family, 
-                             alpha = actTrainParas$alpha, 
-                             lambda = actTrainParas$lambda)
+                             family = as.character(actTrainParas$family), 
+                             alpha = as.numeric(actTrainParas$alpha), 
+                             lambda = as.numeric(actTrainParas$lambda))
         } else if(actModelStr == 'rf') {
             set.seed(seed)
             actFit <- randomForest(x = trainData$predictors, y = trainData$y, 
-                                   mtry = actTrainParas$mtry, 
-                                   ntree = actTrainParas$ntree)
+                                   mtry = as.numeric(actTrainParas$mtry), 
+                                   ntree = as.numeric(actTrainParas$ntree))
         }
         
         # Constructing list

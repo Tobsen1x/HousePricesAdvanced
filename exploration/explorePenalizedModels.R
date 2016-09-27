@@ -2,47 +2,32 @@ train.raw <- read.csv('data/train.csv',stringsAsFactors=FALSE)
 test.raw <- read.csv('data/test.csv',stringsAsFactors=FALSE)
 
 ##### Data Preprocessing #####
-ppL0 <- preprocL0(train.raw, test.raw)
-
-# Dummy Vars
-dmy <- dummyVars(" ~ .", data = ppL0)
-ppL0 <- data.frame(predict(dmy, newdata = ppL0))
-
-# Near Zero Variance feature reduction
-#nearZeroVar(ppL0, freqCut = 300, saveMetrics = TRUE)
-nzvL0 <- ppL0[, -nearZeroVar(ppL0, freqCut = 100)]
-
+ppL0 <- preprocL0(train = train.raw, test = test.raw, nzvRemove = TRUE, 
+                  oneHot = TRUE, skewedRemoveBound = 0.75)
+# Transform to Interface
 # Remove Outliers #
 outliers <- c(1299, 524, 822)
-nzvL0 <- filter(nzvL0, !Id %in% outliers)
+l0Data <- extractL0Data(ppL0, train.raw, outliers = outliers, asMatrix = TRUE)
 
-# Transform to Interface
-l0Data <- extractL0Data(nzvL0, train.raw$SalePrice[!train.raw$Id %in% outliers])
-
-##### LM Modeling #####
-lmData <- as.data.frame(cbind('id' = l0Data$train$id, 'SalePrice' = l0Data$train$y,
-                as.data.frame(l0Data$train$predictors)))
-featureFormula <- paste(colnames(l0Data$train$predictors), sep = ' ', collapse = ' + ')
-lmFormula <- as.formula(paste('SalePrice ~ -id +', featureFormula))
-
-lmFit <- lm(formula = lmFormula, data = lmData )
-summary(lmFit)
-hv <- hatvalues(model = lmFit)
-cd <- cooks.distance(model = lmFit)
-obsExpl <- data.frame(id = as.numeric(names(hv)), hatvalues = hv, cooksDistance = cd)
-ggplot(obsExpl, aes(x='Hatvalues', y=hatvalues)) + geom_violin()
-ggplot(obsExpl, aes(x='Cooks Distance', y=cooksDistance)) + geom_violin()
-obsExpl <- arrange(obsExpl, desc(hatvalues))
-obsExpl <- arrange(obsExpl, desc(cooksDistance))
-head(obsExpl, 10)
-
-
-l <- data.frame(id = lmData$id, y = exp(lmData$SalePrice), lm = exp(predict(lmFit)))
-rmsle(l$y, l$lm)
-l[l$id == 1299,]
+#### Level 0 CV Prediction ####
+modelList <- list(
+    'lasso' = list('family' = 'gaussian', 'alpha' = 1, 'lambda' = cvLassoFit$lambda.min),
+#    'rf' = list('mtry' = 80, 'ntree' = 500),
+    'ridge' = list('family' = 'gaussian', 'alpha' = 0, 'lambda' = cvRidgeFit$lambda.min),
+    'elasticnet' = list('family' = 'gaussian', 'alpha' = 0.9, 'lambda' = cvEnetFit$lambda.min)
+)
+l0Predictions <- predictL0(train = l0Data$train, modelList = modelList, foldCount = 10)
+predMetrics <- evaluatePrediction(l0Predictions$cvPreds)
 
 ##### GLMNET Modelling #####
+# Tuning Elastic Net #
+set.seed(16450)
+cvEnetFit <- cv.glmnet(x = l0Data$train$predictors, y = l0Data$train$y,
+                       alpha = 0.90, keep = FALSE)
+min(sqrt(cvEnetFit$cvm))
+
 # Tuning lambda for lasso #
+set.seed(16450)
 cvLassoFit <- cv.glmnet(x = l0Data$train$predictors, y = l0Data$train$y,
                         alpha = 1, keep = FALSE)
 paste('Lasso lambda min:', cvLassoFit$lambda.min)
@@ -61,10 +46,6 @@ lassoFit <- glmnet(x = l0Data$train$predictors, y = l0Data$train$y,
                  family = 'gaussian', alpha = 1, lambda = cvLassoFit$lambda.min)
 lassoFit
 
-lassoTestPred <- exp(predict(object = lassoFit, newx = l0Data$test$predictors, 
-                             s = cvLassoFit$lambda.min, type = 'response'))
-lassoSub <- data.frame('Id' = l0Data$test$id, 'SalePrice' = lassoTestPred[,1])
-#write.csv(lassoSub,file="submissions/l0_lasso_2.csv",row.names=FALSE)
 
 # Ridge Regression
 cvRidgeFit <- cv.glmnet(x = l0Data$train$predictors, y = l0Data$train$y,
@@ -84,44 +65,34 @@ sqrt(cvRfFit$error.cv)
 rfFit <- randomForest(x = l0Data$train$predictors, y = l0Data$train$y, mtry = 80, ntree = 1000)
 rfFit
 
+##### LM Modeling #####
+lmData <- as.data.frame(cbind('id' = l0Data$train$id, 'SalePrice' = l0Data$train$y,
+                              as.data.frame(l0Data$train$predictors)))
+featureFormula <- paste(colnames(l0Data$train$predictors), sep = ' ', collapse = ' + ')
+lmFormula <- as.formula(paste('SalePrice ~ -id +', featureFormula))
+
+lmFit <- lm(formula = lmFormula, data = lmData )
+summary(lmFit)
+hv <- hatvalues(model = lmFit)
+cd <- cooks.distance(model = lmFit)
+obsExpl <- data.frame(id = as.numeric(names(hv)), hatvalues = hv, cooksDistance = cd)
+ggplot(obsExpl, aes(x='Hatvalues', y=hatvalues)) + geom_violin()
+ggplot(obsExpl, aes(x='Cooks Distance', y=cooksDistance)) + geom_violin()
+obsExpl <- arrange(obsExpl, desc(hatvalues))
+obsExpl <- arrange(obsExpl, desc(cooksDistance))
+head(obsExpl, 10)
+
+
+l <- data.frame(id = lmData$id, y = exp(lmData$SalePrice), lm = exp(predict(lmFit)))
+rmsle(l$y, l$lm)
+l[l$id == 1299,]
+
 ##### Cross validation to ensure Performance R2 = 0.9047 #####
 
-foldCount <- 10
-seed <- 16450
-modelList <- list(
-    'lasso' = list('family' = 'gaussian', 'alpha' = 1, 'lambda' = cvLassoFit$lambda.min),
-    'rf' = list('mtry' = 80, 'ntree' = 500)
-    #'ridge' = list('family' = 'gaussian', 'alpha' = 0, 'lambda' = cvRidgeFit$lambda.min)
-    )
 
-set.seed(seed)
-foldArray <- createFolds(l0Data$train$y, k = foldCount, 
-                         list = FALSE)
-resultList <- list()
 
-# CV Predict Trainset
-allPreds <- data.frame()
-allMetrics <- data.frame()
-for(i in unique(foldArray)) {
-    trainFold <- foldData(l0Data$train, foldArray, i)
-    
-    foldModels <- trainLevelModels(modelList = modelList, trainData = trainFold$train, seed = seed)
-    foldPreds <- predictLevel(models = foldModels, testData = trainFold$test)
-    
-    actMetrics <- evaluatePrediction(foldPreds)
-    actMetrics <- cbind('fold' = i, actMetrics)
-    
-    if(nrow(allPreds) == 0) {
-        allPreds <- foldPreds
-        allMetrics <- actMetrics
-    } else {
-        allPreds <- rbind(allPreds, foldPreds)
-        allMetrics <- rbind(allMetrics, actMetrics)
-    }
-}
-allPreds <- arrange(allPreds, id)
+
 resultList <- append(resultList, list('cvPredictions' = allPreds))
-
 lassoMetrics <- filter(allMetrics, model == 'lasso')
 lassoMetrics
 

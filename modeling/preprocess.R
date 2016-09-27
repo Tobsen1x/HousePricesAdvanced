@@ -30,15 +30,19 @@ outlierKD <- function(dt, var) {
     }
 }
 
-extractL0Data <- function(allData, trainSalesprice) {
+extractL0Data <- function(allData, train, outliers, asMatrix) {
+    # Remove Outliers
+    trainSalesprice <- train$SalePrice[!train$Id %in% outliers]
     ### Transform to Interface ###
-    trainInp <- filter(allData, Id %in% 1:1460)
+    trainInp <- filter(allData, Id %in% 1:1460 & !Id %in% outliers)
     testInp <- filter(allData, Id %in% 1461:2919)
     trainPredictors <- select(trainInp, -Id)
     testPredictors <- select(testInp, -Id)
     
-    trainPredictors <- as.matrix(trainPredictors)
-    testPredictors <- as.matrix(testPredictors)
+    if(asMatrix) {
+        trainPredictors <- as.matrix(trainPredictors)
+        testPredictors <- as.matrix(testPredictors)
+    }
     
     tr <- list('id' = trainInp$Id, 'y' = log(trainSalesprice), 'predictors' = trainPredictors)
     tst <- list('id' = testInp$Id, 'y' = NULL, 'predictors' = testPredictors)
@@ -46,7 +50,7 @@ extractL0Data <- function(allData, trainSalesprice) {
     return(l0FeatureSet)
 }
 
-preprocL0 <- function(train, test) {
+preprocL0 <- function(train, test, nzvRemove, oneHot, skewedRemoveBound) {
     dr <- rbind(select(train, -SalePrice), test)
     
     # Value Mappings
@@ -159,7 +163,7 @@ preprocL0 <- function(train, test) {
     )
     
     ### Imputation ###
-    i <- mutate(m,
+    data <- mutate(m,
                 LotFrontage = ifelse(is.na(LotFrontage), median(LotFrontage, na.rm = TRUE), LotFrontage),
                 MasVnrArea = ifelse(is.na(MasVnrArea), median(MasVnrArea, na.rm = TRUE), MasVnrArea),
                 BsmtFinSF1 = ifelse(is.na(BsmtFinSF1), median(BsmtFinSF1, na.rm = TRUE), BsmtFinSF1),
@@ -175,7 +179,33 @@ preprocL0 <- function(train, test) {
                 GarageCars = ifelse(is.na(GarageCars), median(GarageCars, na.rm = TRUE), GarageCars),
                 GarageArea = ifelse(is.na(GarageArea), median(GarageArea, na.rm = TRUE), GarageArea)
     )
-    return(i)
+    
+    # Create Dummy Vars out of factors
+    if(oneHot) {
+        dmy <- dummyVars(" ~ .", data = data)
+        data <- data.frame(predict(dmy, newdata = data))
+    }
+    
+    # Remove NZV Predictors
+    if(nzvRemove) {
+        data <- data[, -nearZeroVar(data, freqCut = 300)]
+    }
+
+    # Transform skewed Predictors
+    if(!is.na(skewedRemoveBound)) {
+        dataSkewness <- apply(data, MARGIN = 2, FUN = skewness)
+        for(index in 1:ncol(data)) {
+            # Predictor is skewed
+            if(abs(dataSkewness[index]) > skewedRemoveBound) {
+                # Predictor doesn't contain negatives
+                if(sum(data[, index] < 0) == 0) {
+                    data[, index] <- log(data[, index] + 1)
+                }
+            }
+        }
+    }
+
+    return(data)
     
 }
 
