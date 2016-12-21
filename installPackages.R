@@ -1,8 +1,9 @@
+install.packages('devtools')
+install.packages('reshape2')
 install.packages('glmnet')
 install.packages('Metrics')
 install.packages('outliers')
 install.packages('car')
-
 install.packages('RSNNS')
 install.packages('rmarkdown')
 install.packages('ggplot2')
