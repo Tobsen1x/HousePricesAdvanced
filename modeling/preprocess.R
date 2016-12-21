@@ -1,4 +1,6 @@
-extractL0Data <- function(allData, trainSalesprice) {
+extractL0Data <- function(allData, train, outliers, asMatrix) {
+    # Remove Outliers
+    trainSalesprice <- train$SalePrice[!train$Id %in% outliers]
     ### Transform to Interface ###
     trainInp <- filter(allData, Id %in% 1:1460)
     testInp <- filter(allData, Id %in% 1461:2919)
@@ -143,8 +145,36 @@ preprocL0 <- function(train, test) {
                 GarageCars = ifelse(is.na(GarageCars), median(GarageCars, na.rm = TRUE), GarageCars),
                 GarageArea = ifelse(is.na(GarageArea), median(GarageArea, na.rm = TRUE), GarageArea)
     )
-    return(i)
     
+    # Transform skewed Predictors
+    if(!is.na(skewedRemoveBound)) {
+        numericCols <- as.vector(sapply(X = data, class) != 'factor')
+        numData <- data[, numericCols]
+        dataSkewness <- apply(numData, MARGIN = 2, FUN = skewness)
+        for(index in 1:ncol(numData)) {
+            # Predictor is skewed
+            if(abs(dataSkewness[index]) > skewedRemoveBound) {
+                # Predictor doesn't contain negatives
+                if(sum(numData[, index] < 0) == 0) {
+                    numData[, index] <- log(numData[, index] + 1)
+                }
+            }
+        }
+        data[, numericCols] <- numData
+    }
+    
+    # Create Dummy Vars out of factors
+    if(oneHot) {
+        dmy <- dummyVars(" ~ .", data = data)
+        data <- data.frame(predict(dmy, newdata = data))
+    }
+    
+    # Remove NZV Predictors
+    if(nzvRemove) {
+        data <- data[, -nearZeroVar(data, freqCut = 300)]
+    }
+    
+    return(data)
 }
 
 mapFactorValues <- function(x, mapping) {
